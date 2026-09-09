@@ -60,10 +60,6 @@ if(os.path.exists(__table_path__+'table_nsample_MAN.npy')):
 else: raise myError('table_nsample_MAN.npy not found')
 
 
-
-
-
-
 #
 # CYGNO py ROOT Tools
 #
@@ -220,22 +216,29 @@ class dgtz_header:      # very simple class for the dgtz header
         if len(a)>8:
             self.nBoards         = a[8]
             self.boardNames      = a[9]
+            self.DAQversion      = a[10]
+            self.pattern         = a[11]
+            
         else:
             self.nBoards        = 1
             self.boardNames     = [1742]
+            self.DAQversion     = 0
+            self.pattern        = []
             print('WARNING: You are using an older version of the data bank. The analysis of the digitizers might be incomplete.')
 
         self.itemDict = {}
-        self.itemDict["0"] = self.ntriggers
-        self.itemDict["1"] = self.nchannels
-        self.itemDict["2"] = self.nsamples
-        self.itemDict["3"] = self.vertical_resulution
-        self.itemDict["4"] = self.sampling_rate
-        self.itemDict["5"] = self.offsets
-        self.itemDict["6"] = self.TTT
-        self.itemDict["7"] = self.SIC
-        self.itemDict["8"] = self.nBoards
-        self.itemDict["9"] = self.boardNames
+        self.itemDict["0"]  = self.ntriggers
+        self.itemDict["1"]  = self.nchannels
+        self.itemDict["2"]  = self.nsamples
+        self.itemDict["3"]  = self.vertical_resulution
+        self.itemDict["4"]  = self.sampling_rate
+        self.itemDict["5"]  = self.offsets
+        self.itemDict["6"]  = self.TTT
+        self.itemDict["7"]  = self.SIC
+        self.itemDict["8"]  = self.nBoards
+        self.itemDict["9"]  = self.boardNames
+        self.itemDict["10"] = self.DAQversion
+        self.itemDict["11"] = self.pattern
     
     def __getitem__(self, index):
         return self.itemDict[str(int(index))]
@@ -243,96 +246,136 @@ class dgtz_header:      # very simple class for the dgtz header
 def daq_dgz_full2header(bank, verbose=False):
     # v0.1 full PMT recostruction
     import numpy as np
-    nboard              = bank.data[0]
-    full_buffer_size    = len(bank.data)
-    name_board          = np.empty([nboard], dtype=int)
-    number_samples      = np.empty([nboard], dtype=int)
-    number_channels     = np.empty([nboard], dtype=int)
-    number_events       = np.empty([nboard], dtype=int)
-    vertical_resulution = np.empty([nboard], dtype=int)
-    sampling_rate       = np.empty([nboard], dtype=int)
-    channels_offset     = []
-    channels_ttt        = []
-    channels_SIC        = []
-    if verbose: print("Number of board: {:d}".format(nboard))
-    ich=0
-    for iboard in range(nboard): ######### cicle over the boards
-        ich+=1
-        name_board[iboard]          = bank.data[ich]
-        ich+=1  
-        number_samples[iboard]      = bank.data[ich]
-        ich+=1  
-        number_channels[iboard]     = bank.data[ich]
-        ich+=1  
-        number_events[iboard]       = bank.data[ich]
-        ich+=1  
-        vertical_resulution[iboard] = bank.data[ich]
-        ich+=1  
-        sampling_rate[iboard]       = bank.data[ich]
+
+    if bank.data[0] > 1000: # if DAQ version from CYGNO-04
+        DAQversion          = bank.data[0]
+        nboard              = bank.data[1]
+
+        full_buffer_size    = len(bank.data)
+
+        if verbose: print("Number of board: {:d}".format(nboard))
+        board_index         = bank.data[2]
+        name_board          = bank.data[3]
+        number_samples      = bank.data[4]
+        number_channels     = bank.data[5]
+        number_events       = bank.data[6]
+        vertical_resulution = bank.data[7]
+        sampling_rate       = bank.data[8]
 
         if verbose:
-            print ("board: {:d}, name_board: {:d}, number_samples: {:d}, number_channels: {:d}, number_events: {:d}, vertical_resulution: {:d}, sampling_rate: {:d}".format( 
-                   iboard, name_board[iboard], number_samples[iboard], number_channels[iboard], number_events[iboard], vertical_resulution[iboard], sampling_rate[iboard]))
-        
+                print ("board: {:d}, name_board: {:d}, number_samples: {:d}, number_channels: {:d}, number_events: {:d}, vertical_resulution: {:d}, sampling_rate: {:d}, DAQversion: {:d}".format(
+                    board_index, name_board, number_samples, number_channels,
+                    number_events, vertical_resulution, sampling_rate, DAQversion))
+            
         ######### Channels offset reading:
-        channels_offset_tmp = np.empty([number_channels[iboard]], dtype=int)
-        for ichannels in range(number_channels[iboard]):
-            ich+=1
-            channels_offset_tmp[ichannels] = bank.data[ich]
-        if verbose:
-            print ("channels_offset: ", channels_offset_tmp, flush=True)
-        channels_offset.append(channels_offset_tmp)
-        
+        channels_offset  = bank.data[9:(9+number_channels)]
+
         ######### TTT reading:
-        channels_ttt_tmp = np.empty(number_events[iboard], dtype=int)
-        for ttt in range(number_events[iboard]):
-            ich+=1
-            channels_ttt_tmp[ttt] = bank.data[ich]
-        if verbose:
-            print ("channels_ttt: ", channels_ttt)
-        channels_ttt.append(channels_ttt_tmp)
+        channels_ttt     = bank.data[9 + number_channels : 9 + number_channels + number_events]
+
+        ######### Pattern reading:
+        channels_pattern = bank.data[9 + number_channels + number_events : 9 + number_channels + 2 * number_events]
         
-        ######### Start Index Cell reading:  
-        if name_board[iboard] == 1742:   
-            channels_SIC_tmp = np.empty(number_events[iboard], dtype=int)
-            for sic in range(number_events[iboard]):
+        ######### SIC reading:
+        channels_SIC = []
+        if name_board == 1742:
+            channels_SIC = bank.data[9 + number_channels + 2 * number_events : 9 + number_channels + 3 * number_events]
+            
+    
+    else: # if previous versions
+        DAQversion          = 0
+        nboard              = bank.data[0]
+        
+        full_buffer_size    = len(bank.data)
+        name_board          = np.empty([nboard], dtype=int)
+        number_samples      = np.empty([nboard], dtype=int)
+        number_channels     = np.empty([nboard], dtype=int)
+        number_events       = np.empty([nboard], dtype=int)
+        vertical_resulution = np.empty([nboard], dtype=int)
+        sampling_rate       = np.empty([nboard], dtype=int)
+        channels_offset     = []
+        channels_ttt        = []
+        channels_pattern    = []
+        channels_SIC        = []
+    
+        if verbose: print("Number of board: {:d}".format(nboard))
+        
+        ich=0
+        for iboard in range(nboard): ######### cicle over the boards
+            ich+=1
+            name_board[iboard]          = bank.data[ich]
+            ich+=1  
+            number_samples[iboard]      = bank.data[ich]
+            ich+=1  
+            number_channels[iboard]     = bank.data[ich]
+            ich+=1  
+            number_events[iboard]       = bank.data[ich]
+            ich+=1  
+            vertical_resulution[iboard] = bank.data[ich]
+            ich+=1  
+            sampling_rate[iboard]       = bank.data[ich]
+
+            if verbose:
+                print ("board: {:d}, name_board: {:d}, number_samples: {:d}, number_channels: {:d}, number_events: {:d}, vertical_resulution: {:d}, sampling_rate: {:d}".format( 
+                       iboard, name_board[iboard], number_samples[iboard], number_channels[iboard], number_events[iboard], vertical_resulution[iboard], sampling_rate[iboard]))
+        
+            ######### Channels offset reading:
+            channels_offset_tmp = np.empty([number_channels[iboard]], dtype=int)
+            for ichannels in range(number_channels[iboard]):
                 ich+=1
-                channels_SIC_tmp[sic] = bank.data[ich]
-            channels_SIC.append(channels_SIC_tmp)
+                channels_offset_tmp[ichannels] = bank.data[ich]
+            if verbose:
+                print ("channels_offset: ", channels_offset_tmp, flush=True)
+            channels_offset.append(channels_offset_tmp)
+        
+            ######### TTT reading:
+            channels_ttt_tmp = np.empty(number_events[iboard], dtype=int)
+            for ttt in range(number_events[iboard]):
+                ich+=1
+                channels_ttt_tmp[ttt] = bank.data[ich]
+            if verbose:
+                print ("channels_ttt: ", channels_ttt)
+            channels_ttt.append(channels_ttt_tmp)
+        
+            ######### Start Index Cell reading:  
+            if name_board[iboard] == 1742:   
+                channels_SIC_tmp = np.empty(number_events[iboard], dtype=int)
+                for sic in range(number_events[iboard]):
+                    ich+=1
+                    channels_SIC_tmp[sic] = bank.data[ich]
+                channels_SIC.append(channels_SIC_tmp)
                 
     full_header = dgtz_header([number_events, number_channels, number_samples, vertical_resulution, 
-                              sampling_rate, channels_offset, channels_ttt, channels_SIC, nboard, name_board])
+                              sampling_rate, channels_offset, channels_ttt, channels_SIC, nboard, name_board, DAQversion, channels_pattern])
     return full_header
 
 def daq_dgz_full2array(bank, header, verbose=False, corrected=True, ch_offset=[], tag='LNGS'):
 
-    if verbose: print("There are {} boards, and they are {}".format(header.nBoards, header.boardNames))
+    
+    if header.DAQversion > 1000:
+        if verbose: print("There is 1 board, and it is {}".format(header.boardNames))
+        data_offset = 0
 
-    data_offset = 0
-    channels_to_correct = 8 # FOR NOW WE CORRECT ONLY THE FIRST 8 CHANNELS
+        channels_to_correct = 8 # FOR NOW WE CORRECT ONLY THE FIRST 8 CHANNELS
 
-    waveform_f = []
-    waveform_s = []
+        waveform = []
+        
+        if header.boardNames == 1742:
 
-    for idigi,digitizer in enumerate(header.boardNames):
+            number_events   = header.ntriggers
+            number_channels = header.nchannels
+            number_samples  = header.nsamples
 
-        ## Acquiring the "fast digitizer" data
-        if str(digitizer) == '1742':  
-
-            number_events   = header[0][idigi]
-            number_channels = header[1][idigi]
-            number_samples  = header[2][idigi]
             SIC = header.SIC
             to_correct=[]
-            
             if not corrected:
                 for ch in range(channels_to_correct):
                     if ch_offset[ch]<-0.25 and ch_offset[ch]>-0.35:
                         to_correct.append(ch)
             
-                if number_events!=len(SIC[0]):       ## Check if the start index cell passed are right
+                if number_events!=len(SIC):       ## Check if the start index cell passed are right
                     raise myError("Number of events does not match")
-            
+                    
             for ievent in range(number_events):       
                 for ichannels in range(number_channels):
                     if verbose:
@@ -340,22 +383,21 @@ def daq_dgz_full2array(bank, header, verbose=False, corrected=True, ch_offset=[]
                             data_offset, data_offset+number_samples)
                         print(bank.data[data_offset:data_offset+number_samples])
 
-                    waveform_f.append(bank.data[data_offset:data_offset+number_samples])
+                    waveform.append(bank.data[data_offset:data_offset+number_samples])
                     data_offset += number_samples
-
-            if not corrected:              ## Correcting the wavefoms (only the ones with offset at -0.3 of first 8 channels)
-                waveform_f = correct_waveforms(waveform_f, SIC[0], number_channels, to_correct=to_correct, tag=tag)
+            if not corrected: ## Correcting the wavefoms (only the ones with offset at -0.3 of first 8 channels)
+                waveform = correct_waveforms(waveform, SIC, number_channels, to_correct=to_correct, tag=tag)
             
             if verbose:
                 print(number_channels, number_events, number_channels)
-        
-        ## Acquiring the "slow digitizer" data
-        elif str(digitizer) == '1720':  
-
-            number_events   = header[0][idigi]
-            number_channels = header[1][idigi]
-            number_samples  = header[2][idigi]
-            waveform_s = []
+                
+        elif header.boardNames == 1720:
+            
+            number_events   = header.ntriggers
+            number_channels = header.nchannels
+            number_samples  = header.nsamples
+            
+            waveform = []
             for ievent in range(number_events):       
                 for ichannels in range(number_channels):
                     if verbose:
@@ -363,7 +405,7 @@ def daq_dgz_full2array(bank, header, verbose=False, corrected=True, ch_offset=[]
                             data_offset, data_offset+number_samples)
                         print(bank.data[data_offset:data_offset+number_samples])
 
-                    waveform_s.append(bank.data[data_offset:data_offset+number_samples])
+                    waveform.append(bank.data[data_offset:data_offset+number_samples])
                     data_offset += number_samples
             if verbose:
                 print(number_channels, number_events, number_channels)
@@ -371,7 +413,76 @@ def daq_dgz_full2array(bank, header, verbose=False, corrected=True, ch_offset=[]
         else:
             raise myError("You seem to be trying to use a new digitizer model. You need to update the cygno libs for that.")
 
-    return waveform_f, waveform_s
+        return waveform
+            
+    else:
+        
+        if verbose: print("There are {} boards, and they are {}".format(header.nBoards, header.boardNames))
+    
+        data_offset = 0
+        channels_to_correct = 8 # FOR NOW WE CORRECT ONLY THE FIRST 8 CHANNELS
+    
+        waveform_f = []
+        waveform_s = []
+    
+        for idigi,digitizer in enumerate(header.boardNames):
+    
+            ## Acquiring the "fast digitizer" data
+            if str(digitizer) == '1742':  
+    
+                number_events   = header[0][idigi]
+                number_channels = header[1][idigi]
+                number_samples  = header[2][idigi]
+                SIC = header.SIC
+                to_correct=[]
+                
+                if not corrected:
+                    for ch in range(channels_to_correct):
+                        if ch_offset[ch]<-0.25 and ch_offset[ch]>-0.35:
+                            to_correct.append(ch)
+                
+                    if number_events!=len(SIC[0]):       ## Check if the start index cell passed are right
+                        raise myError("Number of events does not match")
+                
+                for ievent in range(number_events):       
+                    for ichannels in range(number_channels):
+                        if verbose:
+                            print ("data_offset, data_offset+number_samples",
+                                data_offset, data_offset+number_samples)
+                            print(bank.data[data_offset:data_offset+number_samples])
+    
+                        waveform_f.append(bank.data[data_offset:data_offset+number_samples])
+                        data_offset += number_samples
+    
+                if not corrected:              ## Correcting the wavefoms (only the ones with offset at -0.3 of first 8 channels)
+                    waveform_f = correct_waveforms(waveform_f, SIC[0], number_channels, to_correct=to_correct, tag=tag)
+                
+                if verbose:
+                    print(number_channels, number_events, number_channels)
+            
+            ## Acquiring the "slow digitizer" data
+            elif str(digitizer) == '1720':  
+    
+                number_events   = header[0][idigi]
+                number_channels = header[1][idigi]
+                number_samples  = header[2][idigi]
+                waveform_s = []
+                for ievent in range(number_events):       
+                    for ichannels in range(number_channels):
+                        if verbose:
+                            print ("data_offset, data_offset+number_samples",
+                                data_offset, data_offset+number_samples)
+                            print(bank.data[data_offset:data_offset+number_samples])
+    
+                        waveform_s.append(bank.data[data_offset:data_offset+number_samples])
+                        data_offset += number_samples
+                if verbose:
+                    print(number_channels, number_events, number_channels)
+    
+            else:
+                raise myError("You seem to be trying to use a new digitizer model. You need to update the cygno libs for that.")
+
+        return waveform_f, waveform_s
 
 def daq_slow2array(bank, verbose=False):
     if verbose:

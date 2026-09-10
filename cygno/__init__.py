@@ -218,12 +218,14 @@ class dgtz_header:      # very simple class for the dgtz header
             self.boardNames      = a[9]
             self.DAQversion      = a[10]
             self.pattern         = a[11]
+            self.iboard          = a[12]
             
         else:
             self.nBoards        = 1
             self.boardNames     = [1742]
             self.DAQversion     = 0
             self.pattern        = []
+            self.iboard         = 0
             print('WARNING: You are using an older version of the data bank. The analysis of the digitizers might be incomplete.')
 
         self.itemDict = {}
@@ -239,6 +241,7 @@ class dgtz_header:      # very simple class for the dgtz header
         self.itemDict["9"]  = self.boardNames
         self.itemDict["10"] = self.DAQversion
         self.itemDict["11"] = self.pattern
+        self.itemDict["12"] = self.iboard
     
     def __getitem__(self, index):
         return self.itemDict[str(int(index))]
@@ -284,6 +287,7 @@ def daq_dgz_full2header(bank, verbose=False):
     
     else: # if previous versions
         DAQversion          = 0
+        board_index         = -1 
         nboard              = bank.data[0]
         
         full_buffer_size    = len(bank.data)
@@ -346,7 +350,7 @@ def daq_dgz_full2header(bank, verbose=False):
                 channels_SIC.append(channels_SIC_tmp)
                 
     full_header = dgtz_header([number_events, number_channels, number_samples, vertical_resulution, 
-                              sampling_rate, channels_offset, channels_ttt, channels_SIC, nboard, name_board, DAQversion, channels_pattern])
+                              sampling_rate, channels_offset, channels_ttt, channels_SIC, nboard, name_board, DAQversion, channels_pattern, board_index])
     return full_header
 
 def daq_dgz_full2array(bank, header, verbose=False, corrected=True, ch_offset=[], tag='LNGS'):
